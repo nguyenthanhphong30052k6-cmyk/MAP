@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<link rel="stylesheet" href="3D.css">
+<script src="script.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bản đồ Metro</title>
+<style>
+
+:root{--bg:#eef2f6;--panel:#ffffff;--accent:#0b5cff}
+html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Roboto,Arial;background:var(--bg)}
+.app{display:grid;grid-template-columns:320px 1fr;gap:16px;height:100vh;padding:16px;box-sizing:border-box}
+.panel{background:var(--panel);border-radius:12px;box-shadow:0 6px 20px rgba(20,30,60,0.08);padding:16px;overflow:auto}
+.header{display:flex;align-items:center;gap:12px}
+.logo{height:40px;width:40px;border-radius:8px;background:linear-gradient(135deg,#2b6cff,#00c6ff);display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+.controls {
+  margin-top: 12px;
+}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid #e6eaf2;background:white;cursor:pointer}
+.map-wrap{position:relative;border-radius:12px;overflow:hidden}
+.svg-container{width:100%;height:calc(100vh - 64px);background:linear-gradient(180deg,#f6f8fb,white)}
+.tooltip{position:absolute;pointer-events:none;background:rgba(0,0,0,0.8);color:white;padding:6px 8px;border-radius:6px;font-size:13px;white-space:nowrap;transition:opacity 0.2s;}
+.directions{margin-top:16px}
+.step{padding:10px;border-radius:8px;border:1px dashed #e2e6ef;margin-bottom:8px;background:#fcfeff}
+.muted{color:#6b7280;font-size:13px}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.legend .item{display:flex;gap:8px;align-items:center}
+.dot{width:12px;height:12px;border-radius:3px}
+#mapSVG{transition: transform 0.3s ease;}
+select{padding:8px;border-radius:8px;border:1px solid #e6eaf2;background:white;cursor:pointer;margin-right:8px}
+@media (max-width:900px){.app{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <div class="header">
+      <div class="logo">M</div>
+      <div>
+        <div style="font-weight:700">Bản đồ Metro</div>
+        <div class="muted">Bản đồ SVG tương tác — di chuyển/phóng to — demo tuyến đường</div>
+      </div>
+    </div>
+    <div class="controls">
+      <div style="margin-bottom:8px;font-weight:600">Điều khiển</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="resetView">Cập nhật lại</button>
+        <button class="btn" id="toggleRoute">Xem tuyến</button>
+        <button class="btn" id="startAnimation">Bắt đầu đi</button>
+      </div>
+    </div>
+    <div class="directions">
+      <div style="font-weight:600;margin-bottom:8px">Hướng dẫn</div>
+      <div style="margin-bottom:8px;display:flex;gap:8px">
+        <div>
+          <label for="startPoint">Từ: </label>
+          <select id="startPoint">
+            <option value="Ga Bến Thành">Ga Bến Thành</option>
+            <option value="Ba Son">Ba Son</option>
+            <option value="Nhà hát Thành Phố">Nhà hát Thành Phố</option>
+            <option value="Thảo Điền">Thảo Điền</option>
+            <option value="An Phú">An Phú</option>
+            <option value="Dĩ An">Dĩ An</option>
+            <option value="Sân bay Tân Sơn Nhất">Sân bay Tân Sơn Nhất</option>
+            <option value="Đại học Quốc gia TPHCM">Đại học Quốc gia TPHCM</option>
+            <option value="Khu công nghệ cao">Khu công nghệ cao</option>
+            <option value="Bến xe Suối Tiên">Bến xe Suối Tiên</option>
+          </select>
+        </div>
+        <div>
+          <label for="endPoint">Đến: </label>
+          <select id="endPoint">
+            <option value="Dĩ An">Dĩ An</option>
+            <option value="Ga Bến Thành">Ga Bến Thành</option>
+            <option value="Ba Son">Ba Son</option>
+            <option value="Nhà hát Thành Phố">Nhà hát Thành Phố</option>
+            <option value="Thảo Điền">Thảo Điền</option>
+            <option value="An Phú">An Phú</option>
+            <option value="Sân bay Tân Sơn Nhất">Sân bay Tân Sơn Nhất</option>
+            <option value="Đại học Quốc gia TPHCM">Đại học Quốc gia TPHCM</option>
+            <option value="Khu công nghệ cao">Khu công nghệ cao</option>
+            <option value="Bến xe Suối Tiên">Bến xe Suối Tiên</option>
+          </select>
+        </div>
+      </div>
+      <div id="steps">
+        <div class="step"><strong>Từ</strong> Ga Bến Thành</div>
+        <div class="step">Đi thẳng đến → Nhà hát Thành Phố</div>
+        <div class="step">Tiếp tục đến Thảo Điền → An Phú → Dĩ An</div>
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <div style="font-weight:600">Chú thích</div>
+      <div class="legend">
+        <div class="item"><div class="dot" style="background:#dbeafe"></div><div class="muted">Ga tàu</div></div>
+        <div class="item"><div class="dot" style="background:#ffd7a8"></div><div class="muted">Địa điểm công cộng</div></div>
+        <div class="item"><div class="dot" style="background:#c7f9cc"></div><div class="muted">Dịch vụ</div></div>
+        <div class="item"><div class="dot" style="background:#0b5cff"></div><div class="muted">Tuyến đường</div></div>
+      </div>
+    </div>
+    <div style="margin-top:16px" class="muted">Mẹo: Kéo bản đồ để di chuyển, cuộn để phóng to/thu nhỏ, nhấp vào các ga để căn giữa.</div>
+  </aside>
+
+  <main class="map-wrap panel" style="padding:0;position:relative">
+    <div id="tooltip" class="tooltip" style="opacity:0"></div>
+    <div class="svg-container" id="svgContainer">
+      <svg id="mapSVG" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="8" stdDeviation="14" flood-opacity="0.12"/>
+          </filter>
+        </defs>
+        <rect x="0" y="0" width="1600" height="1000" fill="#f7fafc"/>
+        <g id="stores">
+          <g class="store" data-name="Ga Bến Thành" transform="translate(520,680)">
+            <rect x="-80" y="-20" width="160" height="40" rx="8" fill="#ffffff" stroke="#e6eefc"/>
+            <text x="0" y="6" font-size="14" text-anchor="middle" fill="#111827">Ga Bến Thành</text>
+          </g>
+          <g class="store shop" data-name="Ba Son" transform="translate(650,610)">
+            <rect x="-80" y="-50" width="160" height="90" rx="8" fill="#dbeafe" stroke="#bfdbfe" filter="url(#shadow)"/>
+            <text x="0" y="6" font-size="16" text-anchor="middle" fill="#0b3b82">Ba Son</text>
+          </g>
+          <g class="store shop" data-name="Nhà hát Thành Phố" transform="translate(420,620)">
+            <rect x="-90" y="-60" width="180" height="100" rx="8" fill="#fff1cc" stroke="#ffe4a3" filter="url(#shadow)"/>
+            <text x="0" y="6" font-size="16" text-anchor="middle" fill="#6b3b00">Nhà hát Thành Phố</text>
+          </g>
+          <g class="store" data-name="Thảo Điền" transform="translate(560,480)">
+            <rect x="-40" y="-20" width="80" height="40" rx="6" fill="#ffffff" stroke="#e6eefc"/>
+            <text x="0" y="6" font-size="13" text-anchor="middle" fill="#111827">Thảo Điền</text>
+          </g>
+          <g class="store shop" data-name="An Phú" transform="translate(760,500)">
+            <rect x="-120" y="-80" width="240" height="160" rx="10" fill="#e6f0ff" stroke="#cfe0ff" filter="url(#shadow)"/>
+            <text x="0" y="6" font-size="18" text-anchor="middle" fill="#0b5cff">An Phú</text>
+          </g>
+          <g class="store food" data-name="Dĩ An" transform="translate(920,200)">
+            <rect x="-80" y="-40" width="160" height="80" rx="10" fill="#fff7ed" stroke="#ffe9cc"/>
+            <text x="0" y="6" font-size="14" text-anchor="middle" fill="#7a3b00">Dĩ An</text>
+          </g>
+          <g class="store shop" data-name="Sân bay Tân Sơn Nhất" transform="translate(300,300)">
+            <rect x="-80" y="-50" width="160" height="100" rx="10" fill="#dbeafe" stroke="#bfdbfe" filter="url(#shadow)"/>
+            <text x="0" y="6" font-size="16" text-anchor="middle" fill="#0b3b82">Sân bay Tân Sơn Nhất</text>
+          </g>
+          <g class="store food" data-name="Đại học Quốc gia TPHCM" transform="translate(1100,350)">
+            <rect x="-70" y="-35" width="140" height="70" rx="10" fill="#fff7ed" stroke="#ffe9cc"/>
+            <text x="0" y="6" font-size="14" text-anchor="middle" fill="#7a3b00">Đại học Quốc gia TPHCM</text>
+          </g>
+          <g class="store service" data-name="Khu công nghệ cao" transform="translate(1300,600)">
+            <rect x="-90" y="-45" width="180" height="90" rx="10" fill="#c7f9cc" stroke="#9ee9a2"/>
+            <text x="0" y="6" font-size="14" text-anchor="middle" fill="#0b5c2c">Khu công nghệ cao</text>
+          </g>
+          <g class="store shop" data-name="Bến xe Suối Tiên" transform="translate(1400,200)">
+            <rect x="-100" y="-60" width="200" height="120" rx="12" fill="#e6f0ff" stroke="#cfe0ff" filter="url(#shadow)"/>
+            <text x="0" y="6" font-size="16" text-anchor="middle" fill="#0b5cff">Bến xe Suối Tiên</text>
+          </g>
+        </g>
+        <g id="routeLayer">
+          <polyline id="routePath" points="520,680 420,620 560,480 760,500 920,200 300,300 1100,350 1300,600 1400,200" fill="none" stroke="#0b5cff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="12 8" opacity="0.95"/>
+          <circle id="routeMarker" cx="520" cy="680" r="10" fill="#0b5cff"/>
+        </g>
+      </svg>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  const svg = document.getElementById('mapSVG');
+  const container = document.getElementById('svgContainer');
+  const tooltip = document.getElementById('tooltip');
+  const resetBtn = document.getElementById('resetView');
+  const toggleRouteBtn = document.getElementById('toggleRoute');
+  const startAnimationBtn = document.getElementById('startAnimation');
+  const routePath = document.getElementById('routePath');
+  const routeMarker = document.getElementById('routeMarker');
+  const startPointSelect = document.getElementById('startPoint');
+  const endPointSelect = document.getElementById('endPoint');
+  const stepsContainer = document.getElementById('steps');
+
+  let state = {x:0,y:0,scale:1};
+  const minScale = 0.6, maxScale = 3;
+  function applyTransform(){ svg.style.transform=`translate(${state.x}px,${state.y}px) scale(${state.scale})`; }
+  applyTransform();
+
+  // Drag/pan
+  let dragging=false, last={x:0,y:0};
+  container.addEventListener('pointerdown', e=>{ dragging=true; last={x:e.clientX,y:e.clientY}; container.setPointerCapture(e.pointerId); });
+  container.addEventListener('pointermove', e=>{ 
+    if(!dragging) return; 
+    const dx=e.clientX-last.x, dy=e.clientY-last.y;
+    last={x:e.clientX,y:e.clientY}; state.x+=dx; state.y+=dy; applyTransform();
+  });
+  container.addEventListener('pointerup', ()=>{ dragging=false; });
+  container.addEventListener('pointerleave', ()=>{ dragging=false; });
+
+  // Zoom
+  container.addEventListener('wheel', e=>{
+    e.preventDefault();
+    const rect=container.getBoundingClientRect();
+    const px=e.clientX-rect.left, py=e.clientY-rect.top;
+    const prevScale=state.scale;
+    const delta=-e.deltaY*0.0015;
+    let nextScale=Math.min(maxScale, Math.max(minScale, prevScale*(1+delta)));
+    const scaleRatio = nextScale/prevScale;
+    state.x=(state.x-px)*scaleRatio+px;
+    state.y=(state.y-py)*scaleRatio+py;
+    state.scale=nextScale; applyTransform();
+  }, {passive:false});
+
+  // Tooltip + click
+  document.querySelectorAll('.store').forEach(node=>{
+    node.style.cursor='pointer';
+    node.addEventListener('click', ev=>{
+      ev.stopPropagation();
+      const bbox=node.getBBox();
+      const c=svg.createSVGPoint(); c.x=bbox.x+bbox.width/2; c.y=bbox.y+bbox.height/2;
+      const screenCTM=c.matrixTransform(svg.getScreenCTM());
+      const rect=container.getBoundingClientRect();
+      const dx=rect.width/2-screenCTM.x, dy=rect.height/2-screenCTM.y;
+      state.x+=dx; state.y+=dy; applyTransform();
+      tooltip.textContent=node.dataset.name;
+      tooltip.style.left=screenCTM.x+'px';
+      tooltip.style.top=(screenCTM.y-12)+'px';
+      tooltip.style.opacity=1;
+      setTimeout(()=>{tooltip.style.opacity=0;},1800);
+    });
+    node.addEventListener('pointerenter', ev=>{
+      const bbox=node.getBBox();
+      const c=svg.createSVGPoint(); c.x=bbox.x+bbox.width/2; c.y=bbox.y+bbox.height/2;
+      const screenCTM=c.matrixTransform(svg.getScreenCTM());
+      tooltip.textContent=node.dataset.name;
+      tooltip.style.left=screenCTM.x+'px';
+      tooltip.style.top=(screenCTM.y-12)+'px';
+      tooltip.style.opacity=1;
+    });
+    node.addEventListener('pointerleave', ()=>{ tooltip.style.opacity=0; });
+  });
+
+  resetBtn.addEventListener('click', ()=>{ state={x:0,y:0,scale:1}; applyTransform(); });
+  let routeVisible=true;
+  toggleRouteBtn.addEventListener('click', ()=>{ routeVisible=!routeVisible; routePath.style.opacity=routeVisible?'0.95':'0'; routeMarker.style.opacity=routeVisible?'1':'0'; });
+
+  // Define store coordinates and route order
+  const storeData = {
+    'Ga Bến Thành': {coords: [520,680], index: 0},
+    'Nhà hát Thành Phố': {coords: [420,620], index: 1},
+    'Thảo Điền': {coords: [560,480], index: 2},
+    'An Phú': {coords: [760,500], index: 3},
+    'Dĩ An': {coords: [920,200], index: 4},
+    'Sân bay Tân Sơn Nhất': {coords: [300,300], index: 5},
+    'Đại học Quốc gia TPHCM': {coords: [1100,350], index: 6},
+    'Khu công nghệ cao': {coords: [1300,600], index: 7},
+    'Bến xe Suối Tiên': {coords: [1400,200], index: 8},
+    'Ba Son': {coords: [650,610], index: 9}
+  };
+
+  // Function to update directions and route
+  function updateRoute(startPoint, endPoint) {
+    const routeOrder = [
+      'Ga Bến Thành',
+      'Nhà hát Thành Phố',
+      'Thảo Điền',
+      'An Phú',
+      'Dĩ An',
+      'Sân bay Tân Sơn Nhất',
+      'Đại học Quốc gia TPHCM',
+      'Khu công nghệ cao',
+      'Bến xe Suối Tiên',
+      'Ba Son'
+    ];
+    
+    // Find indices of start and end points
+    const startIndex = routeOrder.indexOf(startPoint);
+    const endIndex = routeOrder.indexOf(endPoint);
+    if (startIndex === -1 || endIndex === -1 || startPoint === endPoint) {
+      stepsContainer.innerHTML = '<div class="step">Vui lòng chọn điểm bắt đầu và điểm đến khác nhau.</div>';
+      routePath.setAttribute('points', '');
+      return;
+    }
+
+    // Create route from start to end
+    let newRoute;
+    if (startIndex < endIndex) {
+      newRoute = routeOrder.slice(startIndex, endIndex + 1);
+    } else {
+      newRoute = routeOrder.slice(startIndex).concat(routeOrder.slice(0, endIndex + 1));
+    }
+
+    // Update polyline points
+    const newPoints = newRoute.map(store => storeData[store].coords.join(',')).join(' ');
+    routePath.setAttribute('points', newPoints);
+    routeMarker.setAttribute('cx', storeData[startPoint].coords[0]);
+    routeMarker.setAttribute('cy', storeData[startPoint].coords[1]);
+
+    // Update steps display
+    stepsContainer.innerHTML = '';
+    
+    // Add "From" step
+    const fromStep = document.createElement('div');
+    fromStep.className = 'step';
+    fromStep.innerHTML = `<strong>Từ</strong> ${startPoint}`;
+    stepsContainer.appendChild(fromStep);
+
+    // Generate steps based on the route
+    if (newRoute.length > 1) {
+      const step1 = document.createElement('div');
+      step1.className = 'step';
+      step1.innerHTML = `Đi thẳng đến → ${newRoute[1]}`;
+      stepsContainer.appendChild(step1);
+    }
+
+    // Add remaining stations in a single step
+    const remainingStations = newRoute.slice(2);
+    if (remainingStations.length > 0) {
+      const step2 = document.createElement('div');
+      step2.className = 'step';
+      step2.innerHTML = `Tiếp tục đến ${remainingStations.join(' → ')}`;
+      stepsContainer.appendChild(step2);
+    }
+  }
+
+  // Initialize with default start and end points
+  updateRoute('Ga Bến Thành', 'Dĩ An');
+
+  // Update route when start or end point changes
+  startPointSelect.addEventListener('change', (e) => {
+    updateRoute(e.target.value, endPointSelect.value);
+  });
+  endPointSelect.addEventListener('change', (e) => {
+    updateRoute(startPointSelect.value, e.target.value);
+  });
+
+  // Animate route
+  startAnimationBtn.addEventListener('click', ()=>{
+    const points = routePath.getAttribute('points').trim().split(' ').map(p=>p.split(',').map(Number));
+    let i=0, t=0, speed=2;
+    function step(){
+      if(i>=points.length-1) return;
+      const [x1,y1]=points[i], [x2,y2]=points[i+1];
+      const dx=x2-x1, dy=y2-y1, dist=Math.sqrt(dx*dx+dy*dy);
+      t += speed/dist;
+      if(t>=1){ i++; t=0; }
+      const x=x1+t*dx, y=y1+t*dy;
+      routeMarker.setAttribute('cx',x);
+      routeMarker.setAttribute('cy',y);
+      requestAnimationFrame(step);
+    }
+    step();
+  });
+
+})();
+</script>
+</body>
+</html>
